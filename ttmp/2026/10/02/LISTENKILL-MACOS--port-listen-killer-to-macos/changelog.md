@@ -26,3 +26,12 @@ Implement core port (commit faa0b4c): Darwin lsof socket source, portable Scanne
 - /Users/manuel.odendahl/code/wesen/2026-05-07--listen-killer/README.md — macOS notes and new flags
 - /Users/manuel.odendahl/code/wesen/2026-05-07--listen-killer/pkg/listener/cpu.go — CPU rate sampler
 - /Users/manuel.odendahl/code/wesen/2026-05-07--listen-killer/pkg/listener/socket_source_darwin.go — Darwin socket enumeration via lsof
+
+## 2026-10-02
+
+Add Darwin packaging: Makefile (check/build-darwin/sign-darwin), CI workflow (Linux+macOS tests, signed Darwin artifacts), .gitignore, README Gatekeeper notes; gofmt-clean the tree.
+
+### Related Files
+
+- /Users/manuel.odendahl/code/wesen/2026-05-07--listen-killer/.github/workflows/ci.yml — CI build/test + Darwin artifacts
+- /Users/manuel.odendahl/code/wesen/2026-05-07--listen-killer/Makefile — Darwin build + ad-hoc signing targets

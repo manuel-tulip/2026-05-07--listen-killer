@@ -66,6 +66,18 @@ shelling out to `lsof` (`/usr/sbin/lsof`) and reads process details via
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o listen-killer ./cmd/listen-killer/
 ```
 
+For local use, ad-hoc signing avoids the Gatekeeper "damaged or can't be
+opened" dialog:
+
+```bash
+make build-darwin              # dist/listen-killer-darwin-{arm64,amd64}, ad-hoc signed
+xattr -d com.apple.quarantine ./listen-killer   # if downloaded via a browser
+```
+
+Public distribution additionally needs a Developer ID certificate and
+notarization (`codesign` + `notarytool`); `make build-darwin` builds and
+ad-hoc-signs only.
+
 ## Usage
 
 ### CLI / Scripting / Agent Mode (default)

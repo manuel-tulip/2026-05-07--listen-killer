@@ -6,5 +6,6 @@
 - [x] Fix listenerURL IPv6 handling (G5) <!-- t:xj53 -->
 - [x] Introduce platform socket/process sources for Darwin lsof path (G1,G2) <!-- t:6e7o -->
 - [x] Surface cwd/exe degradation instead of swallowing errors (G4) <!-- t:y4fa -->
-- [ ] Add Darwin packaging/signing to release (G8) <!-- t:ausn -->
+- [x] Add Darwin packaging/signing to release (G8) <!-- t:ausn -->
 - [x] Upload intern guide to reMarkable <!-- t:v9ed -->
+- [ ] Add full notarization + Homebrew tap for public macOS distribution (G8 remainder) <!-- t:b4y7 -->

@@ -274,3 +274,42 @@ sampling, IPv6 URL fix".
 - Host: Darwin 24.6.0 arm64, go1.27.1; commit `faa0b4c`.
 - New env-facing surface: `--cpu-sample` (string duration, default empty),
   `cpu_sampled` JSON field, `warnings` JSON field.
+
+---
+
+## Step 4: Darwin packaging (Makefile, CI, ad-hoc signing)
+
+Added reproducible Darwin build tooling so the port can actually be shipped:
+a `Makefile` with `check`/`build-darwin`/`sign-darwin` targets, a two-job CI
+workflow that tests on Linux and macOS and emits signed Darwin artifacts, and
+README instructions for the Gatekeeper quarantine workaround. `make check`
+(vet + test + gofmt) and `make build-darwin` both pass on this machine.
+
+### Prompt Context
+**User prompt (verbatim):** see Step 3.
+**Assistant interpretation:** Complete the guide's Phase 4-5 (docs + packaging).
+**Inferred user intent:** A port is not done until the binary can be built,
+run, and distributed on the target OS.
+
+### Evidence and commits
+- Code/docs commit: (pending) `make build-darwin`, CI workflow, README, `.gitignore`.
+- `make check` → vet + tests pass, gofmt clean.
+- `make build-darwin` →
+  `dist/listen-killer-darwin-arm64` (49.9 MB) and
+  `dist/listen-killer-darwin-amd64` (53.9 MB), both `flags=0x2(adhoc)` per
+  `codesign -dv`.
+- Side fix: formatted three pre-existing files (`pkg/listener/process.go`,
+  `pkg/tui/styles.go`, `pkg/tui/update.go`) so `make fmt` is clean; changes are
+  whitespace-only (EOF newline, label indent).
+
+### Noteworthy decisions or failures
+- Chose ad-hoc signing for local/dev use; full notarization and a Homebrew tap
+  remain out of scope and are tracked as a follow-up task. `CGO_ENABLED=1` is
+  mandatory for accurate `cwd`/`exe`, hence building on a macOS runner.
+- No failures; cross-building `darwin/amd64` with cgo on Apple Silicon worked
+  with the installed Xcode CLT.
+
+### Remaining requirements and next action
+- New task: notarization + Homebrew for public distribution (G8 remainder).
+- Consider a scanner test with an injected fake socket source.
+- Overall port is functionally complete; remaining items are release hardening.

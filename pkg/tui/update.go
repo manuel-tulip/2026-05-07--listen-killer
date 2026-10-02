@@ -68,7 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.listeners = msg.Listeners
 			// Prune marks for PIDs that no longer exist
-		 alive:
+		alive:
 			for pid := range m.marked {
 				for _, l := range m.listeners {
 					if l.PID == pid {
