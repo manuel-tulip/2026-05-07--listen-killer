@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -64,6 +65,10 @@ type Model struct {
 	ready   bool
 	loading bool
 	mode    viewMode
+
+	// scanner retains CPU samples across refreshes so cpu_percent is a real
+	// rate from the second scan onward.
+	scanner *listener.Scanner
 
 	// Multi-mark: set of marked PIDs
 	marked map[int32]bool
@@ -126,13 +131,14 @@ func NewModel() Model {
 		styles:         DefaultStyles(),
 		loading:        true,
 		mode:           modeTable,
+		scanner:        listener.NewScanner(),
 		marked:         make(map[int32]bool),
 		killSignal:     "TERM",
 		killSignals:    []string{"TERM", "KILL", "INT"},
 		killIdx:        0,
 		autoRefresh:    false,
 		refreshSeconds: 3,
-		showDetail:    true,
+		showDetail:     true,
 	}
 }
 
@@ -152,7 +158,7 @@ func (m Model) listenersToRows() []table.Row {
 			addr = "*"
 		}
 		cpu := ""
-		if l.CPUPercent > 0 {
+		if l.CPUSampled {
 			cpu = fmt.Sprintf("%.1f", l.CPUPercent)
 		}
 		mark := " "
@@ -200,8 +206,13 @@ func (m Model) selectedListener() *listener.ListenerInfo {
 
 func listenerURL(l *listener.ListenerInfo) string {
 	host := l.Address
-	if host == "" || host == "*" || host == "::" || host == "0.0.0.0" {
+	if host == "" || host == "*" || host == "0.0.0.0" || host == "::" {
 		host = "127.0.0.1"
+	}
+	// IPv6 hosts must be bracketed in a URL; a bare "http://::1:5199" is
+	// invalid. Wildcards were already rewritten to IPv4 above.
+	if strings.Contains(host, ":") {
+		return fmt.Sprintf("http://[%s]:%d", host, l.Port)
 	}
 	return fmt.Sprintf("http://%s:%d", host, l.Port)
 }
@@ -212,7 +223,7 @@ func listenerURL(l *listener.ListenerInfo) string {
 
 func (m Model) loadListeners() tea.Cmd {
 	return func() tea.Msg {
-		listeners, err := listener.ScanListeners()
+		listeners, err := m.scanner.Scan()
 		return ListenersLoadedMsg{Listeners: listeners, Err: err}
 	}
 }

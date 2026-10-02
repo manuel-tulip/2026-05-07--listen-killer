@@ -20,8 +20,16 @@ type ListenerInfo struct {
 	Uptime        string  `json:"uptime"         glazed:"uptime"`
 	UptimeSeconds int64   `json:"uptime_seconds" glazed:"uptime_seconds"`
 	CPUPercent    float64 `json:"cpu_percent"    glazed:"cpu_percent"`
-	RSSBytes      uint64  `json:"rss_bytes"      glazed:"rss_bytes"`
-	RSSHuman      string  `json:"rss_human"      glazed:"rss_human"`
+	// CPUSampled reports whether CPUPercent was derived from two readings.
+	// When false, CPUPercent is 0 only because no rate could be computed yet.
+	CPUSampled bool   `json:"cpu_sampled"    glazed:"cpu_sampled"`
+	RSSBytes   uint64 `json:"rss_bytes"      glazed:"rss_bytes"`
+	RSSHuman   string `json:"rss_human"      glazed:"rss_human"`
+
+	// Warnings lists fields that could not be read, with a short reason, so
+	// callers can distinguish "denied"/"unsupported" from "genuinely empty".
+	// It is omitted from structured output when there is nothing to report.
+	Warnings []string `json:"warnings,omitempty" glazed:"warnings"`
 }
 
 // FormatUptime converts a create-time in Unix milliseconds to a human-readable

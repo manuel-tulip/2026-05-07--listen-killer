@@ -26,7 +26,7 @@ func formatFloat(f float64) string {
 
 func listenerRow(l listener.ListenerInfo) types.Row {
 	cpuStr := ""
-	if l.CPUPercent > 0 {
+	if l.CPUSampled {
 		cpuStr = formatFloat(l.CPUPercent)
 	}
 
@@ -43,8 +43,10 @@ func listenerRow(l listener.ListenerInfo) types.Row {
 		types.MRP("uptime", l.Uptime),
 		types.MRP("uptime_seconds", l.UptimeSeconds),
 		types.MRP("cpu_percent", cpuStr),
+		types.MRP("cpu_sampled", l.CPUSampled),
 		types.MRP("rss_bytes", l.RSSBytes),
 		types.MRP("rss_human", l.RSSHuman),
+		types.MRP("warnings", strings.Join(l.Warnings, "; ")),
 	)
 }
 

@@ -161,18 +161,18 @@ func (m Model) renderDetailPane() string {
 	// Header with process title
 	header := m.styles.DetailTitle.Render(fmt.Sprintf("%d — %s", info.PID, info.Name))
 
+	lines := []string{header, line1, line2, line3, line4, line5, urlLine}
+	// Surface enrichment degradations (cwd/exe denied or unsupported) instead
+	// of letting fields silently appear empty.
+	if len(info.Warnings) > 0 {
+		lines = append(lines, label.Render("Warn")+" "+
+			m.styles.StatusDanger.Render(strings.Join(info.Warnings, "  ")))
+	}
+
 	detail := lipgloss.NewStyle().
 		Width(m.width-4).
 		Padding(0, 1).
-		Render(lipgloss.JoinVertical(lipgloss.Left,
-			header,
-			line1,
-			line2,
-			line3,
-			line4,
-			line5,
-			urlLine,
-		))
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 
 	return detail
 }

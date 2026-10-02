@@ -1,87 +1,111 @@
 package listener
 
 import (
-	"fmt"
-	"syscall"
-
-	"github.com/shirou/gopsutil/v3/net"
-	"github.com/shirou/gopsutil/v3/process"
+	"sync"
+	"time"
 )
 
-// ScanListeners scans all network connections and returns a list of
-// ListenerInfo for each TCP socket in LISTEN state.
-func ScanListeners() ([]ListenerInfo, error) {
-	conns, err := net.Connections("inet")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get network connections: %w", err)
-	}
-
-	var listeners []ListenerInfo
-	for _, conn := range conns {
-		// Filter: only TCP sockets in LISTEN state
-		if conn.Type != uint32(syscall.SOCK_STREAM) || conn.Status != "LISTEN" {
-			continue
-		}
-
-		info, err := gatherProcessInfo(conn)
-		if err != nil {
-			// Log and skip processes we can't inspect (e.g., kernel-owned or permissions)
-			continue
-		}
-		listeners = append(listeners, *info)
-	}
-
-	return listeners, nil
+// Scanner discovers listening TCP sockets and enriches them with process
+// metadata. It is portable: the OS-specific work lives behind listSockets()
+// (build-tagged) and gatherFacts() (gopsutil).
+//
+// A Scanner retains per-process CPU samples across Scan calls, so callers that
+// scan repeatedly (the TUI, which auto-refreshes) get a real cpu_percent from
+// the second scan onward. A one-shot caller can use ScanWithSample to pay a
+// short blocking interval and still get a value on the first result.
+type Scanner struct {
+	mu  sync.Mutex
+	cpu *CPUSampler
 }
 
-// gatherProcessInfo enriches a net.ConnectionStat with process details
-// using gopsutil/process.
-func gatherProcessInfo(conn net.ConnectionStat) (*ListenerInfo, error) {
-	proc, err := process.NewProcess(conn.Pid)
+// NewScanner creates a Scanner with an empty CPU sample cache.
+func NewScanner() *Scanner {
+	return &Scanner{cpu: NewCPUSampler()}
+}
+
+// ScanListeners performs a one-shot scan with no CPU warm-up. cpu_percent is
+// empty because a single reading cannot establish a rate.
+func ScanListeners() ([]ListenerInfo, error) {
+	return NewScanner().Scan()
+}
+
+// Scan enumerates listeners and enriches them, reusing cached CPU samples.
+func (s *Scanner) Scan() ([]ListenerInfo, error) {
+	return s.scan()
+}
+
+// ScanWithSample performs a warm-up scan, waits interval, then scans again so
+// the returned rows carry a real cpu_percent. The extra interval is paid
+// deliberately and only when requested.
+func (s *Scanner) ScanWithSample(interval time.Duration) ([]ListenerInfo, error) {
+	if _, err := s.scan(); err != nil {
+		return nil, err
+	}
+	if interval > 0 {
+		time.Sleep(interval)
+	}
+	return s.scan()
+}
+
+func (s *Scanner) scan() ([]ListenerInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	socks, err := listSockets()
 	if err != nil {
-		return nil, fmt.Errorf("process %d: %w", conn.Pid, err)
+		return nil, err
 	}
 
-	name, _ := proc.Name()
-	cmdline, _ := proc.Cmdline()
-	exe, _ := proc.Exe()
-	cwd, _ := proc.Cwd()
-	username, _ := proc.Username()
+	now := time.Now()
+	seen := make(map[int32]bool, len(socks))
+	factsCache := make(map[int32]*ProcessFacts)
+	cpuByPID := make(map[int32]float64)
+	cpuSampled := make(map[int32]bool)
+	var listeners []ListenerInfo
 
-	// CPU percent — use duration 0 to get cached value (avoids 1s blocking call)
-	cpuPercent, _ := proc.Percent(0)
+	for _, sock := range socks {
+		facts, ok := factsCache[sock.PID]
+		if !ok {
+			facts, err = gatherFacts(sock.PID)
+			if err != nil {
+				// Skip processes we cannot identify (kernel-owned, gone,
+				// permissions). Matches the original behavior.
+				continue
+			}
+			factsCache[sock.PID] = facts
+			// Observe once per PID: a process may own several listeners, and
+			// observing again in the same instant would reset its sample.
+			cpuByPID[sock.PID], cpuSampled[sock.PID] = s.cpu.Observe(sock.PID, facts.CPUTotal, now)
+		}
+		seen[sock.PID] = true
 
-	// Memory info
-	memInfo, err := proc.MemoryInfo()
-	var rssBytes uint64
-	if err == nil && memInfo != nil {
-		rssBytes = memInfo.RSS
+		address := sock.Address
+		if address == "" {
+			address = "*"
+		}
+
+		uptime, uptimeSecs := FormatUptime(facts.CreateMS)
+
+		listeners = append(listeners, ListenerInfo{
+			PID:           sock.PID,
+			Name:          facts.Name,
+			Cmdline:       facts.Cmdline,
+			Exe:           facts.Exe,
+			Cwd:           facts.Cwd,
+			Username:      facts.Username,
+			Port:          sock.Port,
+			Address:       address,
+			Protocol:      sock.Proto,
+			Uptime:        uptime,
+			UptimeSeconds: uptimeSecs,
+			CPUPercent:    cpuByPID[sock.PID],
+			CPUSampled:    cpuSampled[sock.PID],
+			RSSBytes:      facts.RSS,
+			RSSHuman:      FormatBytes(facts.RSS),
+			Warnings:      facts.Warnings,
+		})
 	}
 
-	// Uptime
-	createTime, _ := proc.CreateTime()
-	uptimeStr, uptimeSecs := FormatUptime(createTime)
-
-	// Bound address (prefer IPv4 string; IPv6 addresses come from /proc as hex)
-	address := conn.Laddr.IP
-	if address == "" {
-		address = "*"
-	}
-
-	return &ListenerInfo{
-		PID:           conn.Pid,
-		Name:          name,
-		Cmdline:       cmdline,
-		Exe:           exe,
-		Cwd:           cwd,
-		Username:      username,
-		Port:          conn.Laddr.Port,
-		Address:       address,
-		Protocol:      "TCP",
-		Uptime:        uptimeStr,
-		UptimeSeconds: uptimeSecs,
-		CPUPercent:    cpuPercent,
-		RSSBytes:      rssBytes,
-		RSSHuman:      FormatBytes(rssBytes),
-	}, nil
+	s.cpu.Prune(seen)
+	return listeners, nil
 }

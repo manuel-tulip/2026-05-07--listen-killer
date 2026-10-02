@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/glazed/pkg/cli"
@@ -59,11 +61,12 @@ type ListCommand struct {
 
 // ListSettings maps CLI flags to a struct.
 type ListSettings struct {
-	PIDs  []string `glazed:"pid"`
-	Ports []string `glazed:"port"`
-	Name  string   `glazed:"name"`
-	User  string   `glazed:"user"`
-	Path  string   `glazed:"path"`
+	PIDs      []string `glazed:"pid"`
+	Ports     []string `glazed:"port"`
+	Name      string   `glazed:"name"`
+	User      string   `glazed:"user"`
+	Path      string   `glazed:"path"`
+	CPUSample string   `glazed:"cpu-sample"`
 }
 
 // NewListCommand creates the Glazed command with field definitions and sections.
@@ -145,6 +148,12 @@ Examples:
 				fields.WithDefault(""),
 				fields.WithHelp("Only show listeners whose executable, cwd, or cmdline contains this string"),
 			),
+			fields.New(
+				"cpu-sample",
+				fields.TypeString,
+				fields.WithDefault(""),
+				fields.WithHelp("Sample CPU over this duration (e.g. 500ms) so cpu_percent is populated; empty means no sample"),
+			),
 		),
 		cmds.WithSections(glazedSection, cmdSection),
 	)
@@ -179,7 +188,19 @@ func RunTUI() error {
 // runCLI scans listeners, applies script-friendly filters, and emits them
 // through the Glazed processor.
 func runCLI(ctx context.Context, gp middlewares.Processor, settings *ListSettings) error {
-	listeners, err := listener.ScanListeners()
+	scanner := listener.NewScanner()
+
+	var listeners []listener.ListenerInfo
+	var err error
+	if settings.CPUSample != "" {
+		interval, parseErr := time.ParseDuration(settings.CPUSample)
+		if parseErr != nil {
+			return fmt.Errorf("invalid --cpu-sample %q: %w", settings.CPUSample, parseErr)
+		}
+		listeners, err = scanner.ScanWithSample(interval)
+	} else {
+		listeners, err = scanner.Scan()
+	}
 	if err != nil {
 		return err
 	}
