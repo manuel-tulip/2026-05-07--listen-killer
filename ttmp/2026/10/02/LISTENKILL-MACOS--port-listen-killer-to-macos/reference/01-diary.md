@@ -292,7 +292,8 @@ README instructions for the Gatekeeper quarantine workaround. `make check`
 run, and distributed on the target OS.
 
 ### Evidence and commits
-- Code/docs commit: (pending) `make build-darwin`, CI workflow, README, `.gitignore`.
+- Code/docs commit: `66229ea` — "build(macos): Makefile, CI and ad-hoc
+  signing for Darwin binaries".
 - `make check` → vet + tests pass, gofmt clean.
 - `make build-darwin` →
   `dist/listen-killer-darwin-arm64` (49.9 MB) and
