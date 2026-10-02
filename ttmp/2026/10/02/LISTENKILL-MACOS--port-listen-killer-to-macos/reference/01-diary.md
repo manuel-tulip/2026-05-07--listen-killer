@@ -129,3 +129,41 @@ Darwin-specific behavior from scratch.
 - Host: Darwin 24.6.0, arm64 (Apple M1 Pro), go1.27.1.
 - Repo revision: `ef03a2c`.
 - Ticket root: `ttmp/2026/10/02/LISTENKILL-MACOS--port-listen-killer-to-macos`.
+
+---
+
+## Step 2: Commit documentation milestone and deliver to reMarkable
+
+The documentation milestone is complete and committed as a single coherent
+checkpoint: the new `LISTENKILL-MACOS` ticket, the intern guide, the diary,
+tasks, changelog, index, and the docmgr topics vocabulary additions. The guide
+bundle (design doc + diary) was also uploaded to reMarkable, confirming cloud
+delivery.
+
+### Prompt Context
+**User prompt (verbatim):** "btw commit at appropriate intervals and keep a
+detailed diary as you work (using the diary format from the skill)."
+**Assistant interpretation:** Commit the completed documentation checkpoint and
+keep the diary updated with commit hashes as work proceeds.
+**Inferred user intent:** Durable, traceable checkpoints and an up-to-date work
+record in the ticket's diary.
+
+### Evidence and commits
+- Code/docs commit: `5ffce3e` — "Add LISTENKILL-MACOS ticket: intern guide for
+  macOS port" (7 files: ticket README/changelog/index/tasks/diary/design-doc +
+  `ttmp/vocabulary.yaml`).
+- `docmgr doctor --ticket LISTENKILL-MACOS` → `✅ All checks passed`.
+- reMarkable: `OK: uploaded LISTENKILL-MACOS Port to macOS - Intern Guide.pdf ->
+  /ai/2026/10/02/LISTENKILL-MACOS` (bundle = design doc + diary, `--toc-depth 2`).
+- Tasks `t4ph` (author guide) and `v9ed` (upload) checked.
+
+### Noteworthy decisions or failures
+- No failures. `doctor` initially warned about unknown topics; resolved by
+  seeding `go`, `bubbletea`, `macos`, `networking`, `porting`, `glazed`, `tui`
+  into `ttmp/vocabulary.yaml`.
+
+### Remaining requirements and next action
+- Open implementation tasks remain (`s000`, `xj53`, `6e7o`, `y4fa`, `ausn`) per
+  the guide's Phase 0-5 plan. Next concrete action: begin Phase 0 (Darwin build
+  harness + captured `lsof` fixture) if code work is authorized.
+- No code was changed, so no code-level validation beyond `go build` was due.
