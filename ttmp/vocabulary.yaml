@@ -5,6 +5,20 @@ topics:
       description: Backend services
     - slug: websocket
       description: WebSocket lifecycle & events
+    - slug: go
+      description: Go language and tooling
+    - slug: bubbletea
+      description: Charmbracelet Bubbletea TUI framework
+    - slug: macos
+      description: macOS/Darwin platform specifics
+    - slug: networking
+      description: TCP sockets and networking
+    - slug: porting
+      description: Cross-platform porting work
+    - slug: glazed
+      description: Glazed CLI framework
+    - slug: tui
+      description: Terminal user interfaces
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes
