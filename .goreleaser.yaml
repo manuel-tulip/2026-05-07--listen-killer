@@ -1,0 +1,91 @@
+version: 2
+project_name: listen-killer
+
+before:
+  hooks:
+    - go mod tidy
+builds:
+  # Linux needs no cgo: gopsutil reads /proc directly here, so a static binary
+  # is built and no cross-compiler is required.
+  - id: listen-killer-linux
+    main: ./cmd/listen-killer
+    binary: listen-killer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+  # Darwin requires cgo: gopsutil reads the working directory and executable
+  # path through Apple's libproc (proc_pidinfo / proc_pidpath). Building on a
+  # macOS runner keeps those fields accurate; CGO_ENABLED=0 would silently
+  # drop cwd for every process.
+  - id: listen-killer-darwin
+    main: ./cmd/listen-killer
+    binary: listen-killer
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+checksum:
+  name_template: 'checksums.txt'
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+signs:
+  - artifacts: checksum
+    # setup for github actions according to https://goreleaser.com/ci/actions/
+    args: [ "--batch", "-u", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}" ]
+
+brews:
+  - name: listen-killer
+    description: "TUI and CLI for discovering, inspecting, and killing TCP listeners."
+    homepage: "https://github.com/wesen/2026-05-07--listen-killer"
+    repository:
+      owner: go-go-golems
+      name: homebrew-go-go-go
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+
+nfpms:
+  - id: packages
+    vendor: GO GO GOLEMS
+    homepage: https://github.com/wesen/2026-05-07--listen-killer
+    maintainer: Manuel Odendahl <wesen@ruinwesen.com>
+
+    description: |-
+      Listen Killer shows every TCP listening socket with process metadata.
+
+    license: MIT
+
+    # Formats to be generated.
+    formats:
+      - deb
+      - rpm
+
+    # Version Release.
+    release: "1"
+
+    # Section.
+    section: default
+
+    # Priority.
+    priority: extra
+
+    # Custom configuration applied only to the Deb packager.
+    deb:
+      # Lintian overrides
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
+
+# modelines, feel free to remove those if you don't want/use them:
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj

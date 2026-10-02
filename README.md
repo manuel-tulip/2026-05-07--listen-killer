@@ -33,6 +33,10 @@ Press `d` to toggle the detail pane. Without it, the table gets the full termina
 ## Installation
 
 ```bash
+# Homebrew (macOS and Linux)
+brew install go-go-golems/go-go-go/listen-killer
+
+# Go
 go install github.com/wesen/listen-killer/cmd/listen-killer@latest
 ```
 
