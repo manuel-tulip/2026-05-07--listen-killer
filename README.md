@@ -44,6 +44,28 @@ cd listen-killer
 go build -o ~/bin/listen-killer ./cmd/listen-killer/
 ```
 
+### macOS notes
+
+On macOS there is no `/proc`, so Listen Killer discovers listening sockets by
+shelling out to `lsof` (`/usr/sbin/lsof`) and reads process details via
+`sysctl`/`libproc`/`ps` (through gopsutil). Three consequences worth knowing:
+
+- **Permissions.** Without elevated privileges or *Full Disk Access*
+  (System Settings → Privacy & Security → Full Disk Access) for your terminal,
+  `lsof` can only see sockets owned by your user. Grant Full Disk Access to see
+  root-owned/system listeners.
+- **Working directory.** `cwd` is read via Apple's `libproc`, which requires a
+  cgo build (`CGO_ENABLED=1`, the default for native macOS builds). A binary
+  cross-compiled with `CGO_ENABLED=0` reports `cwd` as unsupported; the app
+  now says so in a `warnings` field instead of leaving it blank.
+- **SIP.** System Integrity Protection prevents signalling protected processes;
+  `kill` will report `operation not permitted` for those.
+
+```bash
+# Build a fully-featured Darwin binary (keeps cwd/exe via libproc)
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o listen-killer ./cmd/listen-killer/
+```
+
 ## Usage
 
 ### CLI / Scripting / Agent Mode (default)
@@ -57,7 +79,14 @@ listen-killer list --output csv                         # CSV output
 listen-killer list --fields pid,name,port,cwd           # select columns
 listen-killer list --port 3000 --output json            # filter by port
 listen-killer list --name node --fields pid,port,cwd,cmdline
+listen-killer list --cpu-sample 500ms --output json      # include cpu_percent
 ```
+
+`cpu_percent` is a rate, so it needs two readings. In the TUI it appears from
+the second auto-refresh; for a one-shot CLI run, pass `--cpu-sample <duration>`
+(e.g. `500ms`) to sample over an interval. The `cpu_sampled` field tells you
+whether a value was actually measured. Rows may also carry a `warnings` field
+when a field could not be read (for example `cwd: permission denied`).
 
 ### Interactive TUI
 
@@ -173,7 +202,11 @@ listen-killer kill --port 5173 --signal TERM --yes --output json
 
 ### Data Flow
 
-1. **Scanner** (`pkg/listener/scanner.go`): Uses `gopsutil/net` to find all TCP LISTEN sockets, then enriches each with process details from `gopsutil/process`.
+1. **Scanner** (`pkg/listener/`): finds all TCP LISTEN sockets and enriches
+   each with process details. Socket enumeration is platform-split —
+   `socket_source_other.go` uses gopsutil (`/proc` on Linux), while
+   `socket_source_darwin.go` shells out to `lsof` on macOS. Process enrichment
+   (`process_facts.go`) and CPU sampling (`cpu.go`) are shared.
 2. **TUI** (`pkg/tui/`): Bubbletea model with three modes — table navigation, kill confirmation dialog, and detail pane. The table is the `bubbles/table` widget from Charmbracelet.
 3. **CLI** (`cmd/listen-killer/`): Glazed command framework wraps the scanner for structured list and kill commands (JSON/YAML/CSV/table), including filters for scripts and LLM-agent workflows.
 

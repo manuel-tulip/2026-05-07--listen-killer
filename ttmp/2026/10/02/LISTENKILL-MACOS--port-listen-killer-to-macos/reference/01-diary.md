@@ -167,3 +167,110 @@ record in the ticket's diary.
   the guide's Phase 0-5 plan. Next concrete action: begin Phase 0 (Darwin build
   harness + captured `lsof` fixture) if code work is authorized.
 - No code was changed, so no code-level validation beyond `go build` was due.
+
+---
+
+## Step 3: Implement the core port (socket sources, CPU sampling, IPv6 URL, degradation warnings)
+
+The user asked to implement the port. I implemented the highest-value, most
+verifiable parts of Phases 1-3 from the guide: a platform-split socket source
+(Darwin `lsof`, everything else `/proc`), a portable `Scanner` with a
+real delta-based CPU sampler, explicit degradation warnings for `cwd`/`exe`,
+and the IPv6 browser-URL fix. I verified behavior on this Mac and kept the
+Linux path intact (cross-build + pure unit tests).
+
+### Prompt Context
+**User prompt (verbatim):** "Implement, btw commit at appropriate intervals and
+keep a detailed diary as you work (using the diary format from the skill)."
+**Assistant interpretation:** Execute the implementation plan from the guide,
+committing coherent checkpoints and recording each in this diary.
+**Inferred user intent:** Make Listen Killer correct and complete on macOS while
+preserving Linux behavior and keeping an auditable work record.
+**Commit (code):** `faa0b4c` — "macOS port: platform socket sources, real CPU
+sampling, IPv6 URL fix".
+
+### What I did
+- New platform socket sources:
+  - `pkg/listener/socket.go` — `RawSocket` neutral type.
+  - `pkg/listener/socket_source_darwin.go` (`//go:build darwin`) — resolves
+    `/usr/sbin/lsof` (then PATH), runs `lsof -a -n -P -i tcp` with a 15s
+    timeout, turns failures into actionable errors.
+  - `pkg/listener/socket_source_other.go` (`//go:build !darwin`) — the original
+    gopsutil `/proc` path, unchanged semantically.
+  - `pkg/listener/lsof_parse.go` — build-tag-free `parseLsofListenLine`.
+- `pkg/listener/process_facts.go` — `gatherFacts` + `appendWarning`;
+  distinguishes permission-denied from not-implemented (CGO_ENABLED=0).
+- `pkg/listener/cpu.go` — `CPUSampler` caching cumulative CPU seconds per PID
+  and returning `(percent, sampled)`; `Prune` bounds memory.
+- `pkg/listener/scanner.go` — rewritten as portable orchestration with a
+  persistent `Scanner` (`NewScanner`, `Scan`, `ScanWithSample`);
+  `ScanListeners` retained for compatibility; per-PID dedup of enrichment.
+- `pkg/listener/types.go` — added `Warnings []string` and `CPUSampled bool`.
+- TUI: `pkg/tui/model.go` holds a `*listener.Scanner`; `listenerURL` now
+  brackets IPv6 hosts; `pkg/tui/view.go` shows a Warn line.
+- CLI: `list` gains `--cpu-sample <duration>`; `helpers.go` emits
+  `warnings` and `cpu_sampled`.
+- Tests: `lsof_parse_test.go`, `cpu_test.go`, `pkg/tui/model_test.go`.
+
+### Why
+- The guide (§9-§11) recommended exactly this split; owning the `lsof` call
+  fixes G1/G2 error handling and makes the parser testable off-Mac.
+- CPU had to be a *rate*; a fresh `Process` per scan made `Percent(0)` always 0.
+
+### What worked
+- `go build`, `go vet`, `go test ./...` pass on `darwin/arm64`; `GOOS=linux
+  GOARCH=amd64 go build ./...` succeeds.
+- Runtime: `list --cpu-sample 400ms` reports real values (jetbrains 0.2%,
+  docker 0.6%) and `sampled=true`; without the flag `cpu_percent` stays empty
+  (`sampled=false`). Idle `node` shows `cpu=0 sampled=true` — an honest zero,
+  now distinguishable from "not sampled".
+- `kill --port 5184 --dry-run` still resolves correctly.
+
+### What didn't work
+- First CPU cutover rendered a true 0% as empty (the old `> 0` guard). Fixed by
+  returning a `sampled` boolean from the sampler and adding `CPUSampled` to
+  `ListenerInfo`; formatting now keys off `CPUSampled`, not `> 0`.
+- No other failures; `gofmt -l` still flags three pre-existing untouched files
+  (`process.go`, `styles.go`, `update.go`) left as-is to keep the diff focused.
+
+### What I learned
+- gopsutil's `Percent` semantics are `deltaProc/wall*100` (100% == one core);
+  the sampler replicates this so values look like `top`.
+- `lsof` emits `[::1]:port` and `*:port`; `net.SplitHostPort` yields `::1` and
+  `*`, which is why the address field is already correct before normalization.
+- We cannot import gopsutil's `internal/common` sentinel, so "not implemented"
+  is matched by message and permission by the exported `process.ErrorNotPermitted`.
+
+### What was tricky to build
+- CPU sampling under multiple sockets per PID: observing per socket within one
+  scan resets the sample (wall=0), so observation is done once per unique PID
+  per scan, with a per-scan facts cache.
+- `lsof` exits non-zero both when it finds nothing and when it cannot inspect
+  some processes; only a zero-output failure is treated as fatal, matching
+  gopsutil's leniency.
+
+### What warrants a second pair of eyes
+- The `Scanner` mutex + `CPUSampler` mutex interaction and the fact that
+  `ScanWithSample` performs two full scans (two `lsof` invocations).
+- Message-based matching of gopsutil's not-implemented sentinel is version-
+  fragile; pin the gopsutil version and revisit on upgrade.
+- `CPUSampled`/`Warnings` are additive output-contract changes; confirm scripts
+  and the README stay accurate.
+
+### What should be done in the future
+- Phase 4: README "macOS notes" (lsof, Full Disk Access, SIP, CGO cwd).
+- Phase 5: Darwin packaging/signing in release.
+- Consider a Scanner test injected with a fake socket source (the build-tagged
+  function currently prevents this).
+
+### Code review instructions
+- Start at `pkg/listener/scanner.go`, then `socket_source_darwin.go`,
+  `lsof_parse.go`, `process_facts.go`, `cpu.go`.
+- Validate: `go test ./...`; `go build -o /tmp/lk ./cmd/listen-killer/`;
+  `/tmp/lk list --cpu-sample 400ms --output json | jq '.[0]'`;
+  `/usr/sbin/lsof -a -n -P -i tcp | awk 'NR==1 || /LISTEN/'`.
+
+### Technical details
+- Host: Darwin 24.6.0 arm64, go1.27.1; commit `faa0b4c`.
+- New env-facing surface: `--cpu-sample` (string duration, default empty),
+  `cpu_sampled` JSON field, `warnings` JSON field.
